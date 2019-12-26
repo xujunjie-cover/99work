@@ -1,0 +1,219 @@
+/etc/hosts
+selinux
+git
+
+
+
+需要解决yum, pip
+wget
+
+(1) 
+1. mkdir -p /repo
+2. cp -rp /repo/. /repo
+3. yum clean all
+4. mv /etc/yum.repos.d /etc/yum.repos.d.bak
+5. /etc/yum.repos.d/local.repo
+[local-docker]
+name=local-docker
+baseurl=file:///repo/rpm-packages
+enabled=1
+gpgcheck=0
+
+
+(2)
+/etc/pip.conf
+[global]
+find-links = ///repo/pip
+trusted-host = 192.168.93.129
+no-index = true
+
+cp  cfssl_linux-amd64 /usr/bin/cfssl
+cp  cfssl /usr/bin/cfssl
+chmod 711 /usr/bin/cfssl
+chmod 711 /usr/bin/cfssljson
+
+(3)(interface = eth0的话无问题)
+/root/coredns-deployment-master/roles/etcd-no-k8s/templates/etcd-systemd-template.j2 /etc/systemd/system/etcd.service
+
+(4)docker 问题
+docker load --input coredns-management-api
+docker tag 8e63ee06438b docker.io/99cloud/coredns-management-api:latest
+
+
+
+
+etcd_node1_ip="10.0.0.28" # 如果修改了ip，只需要改这里
+etcd_node2_ip="10.0.0.29" # 如果修改了ip，只需要改这里
+etcd_node3_ip="10.0.0.30" # 如果修改了ip，只需要改这里
+coredns_upstream_address=114.114.114.114 # 那些不被分流的域名通过这个上游dns地址来正常解析
+coredns_service_port=53 # coredns运行的端口
+# 填写coredns api lb的lb的地址或者hostname
+# 比如coredns api lb的地址为172.16.100.100:8080
+# coredns_speaker_service_address="172.16.100.100:8080"
+# 这里为了方便我只写了其中的一个节点的地址
+coredns_speaker_service_address="etcd-node1"
+coredns_api_port=80 #coredns api提供服务的端口
+
+# 不要改，逻辑是在本地先签名证书，所以你运行ansible的时候可以是在一个部署节点上
+# 也可以是在任何一台部署的目标机器上
+# 部署节点，在例子中就是 节点1
+[tls]
+localhost              ansible_connection=local
+
+# 请使用hostname，不要用ip因为复制证书的时候需要
+[etcd]
+etcd-node1
+etcd-node2
+etcd-node3
+#localhost              ansible_connection=local
+# 172.16.60.17  ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa_rhel
+
+# 可以忽略现在没有完成nats的tls部署
+[nats]
+etcd-node1
+etcd-node2
+etcd-node3
+#localhost              ansible_connection=local
+# 172.16.60.17  ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa_rhel
+
+[coredns_api]
+etcd-node1
+etcd-node2
+etcd-node3
+#localhost              ansible_connection=local
+# 172.16.60.17  ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa_rhel
+
+[coredns]
+etcd-node1
+etcd-node2
+etcd-node3
+#localhost              ansible_connection=local
+# 172.16.60.17  ansible_user=root ansible_ssh_private_key_file=~/.ssh/id_rsa_rhel
+
+
+ansible-playbook -i inventory_no_k8s.example deploy_all_without_k8s.yml
+
+
+ssh-keygen
+ssh-copy-id -i ~/.ssh/id_rsa.pub root@all-in-one-cass
+
+
+分解安装coredns
+一、
+1.  mkdir /etc/coredns-edge-tls-dir
+	chmod 755 /etc/coredns-edge-tls-dir
+
+2.  cp */coredns-deployment-master/roles/etcd-no-k8s/templates/ca-config.json.j2 /etc/coredns-edge-tls-dir/ca-config.json
+
+3.  cp */coredns-deployment-master/roles/etcd-no-k8s/templates/ca-csr.json.j2/etc/coredns-edge-tls-dir/ca-csr.json
+
+4.  cp */coredns-deployment-master/roles/etcd-no-k8s/templates/etcd-client.json.j2 /etc/coredns-edge-tls-dir/etcd-client.json
+
+*5.  wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64  && mv cfssl_linux-amd64 /usr/bin/cfssl 
+	chmod 711 /usr/bin/cfssl
+
+*6.  wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64 && mv cfssljson_linux-amd64 /usr/bin/cfssljson
+	chmod 711 /usr/bin/cfssljson
+
+7.  cd /etc/coredns-edge-tls-dir
+	cfssl gencert -initca ca-csr.json | cfssljson -bare ca -
+
+8.  cd /etc/coredns-edge-tls-dir
+	create etcd node1 cert
+
+*9.  node2 node3  del调
+
+10. cd /etc/coredns-edge-tls-dir
+	cfssl gencert -ca=ca.pem -ca-key=ca-key.pem -config=ca-config.json -profile=client etcd-client.json | cfssljson -bare etcd-client
+
+11. cd /etc/coredns-edge-tls-dir
+	mv etcd-client.pem etcd-client.crt
+    mv etcd-client-key.pem etcd-client.key
+    cp ca.pem etcd-client-ca.crt
+
+
+二、
+1.  mkdir /etc/coredns-edge-deployment
+
+2.  chmod 755 /etc/coredns-edge-deployment
+
+3.  mkdir /etc/coredns-edge-deployment/etcd && chmod 755 mkdir /etc/coredns-edge-deployment/etcd
+
+4.  mkdir /etc/coredns-edge-deployment/nats && chmod 755 mkdir /etc/coredns-edge-deployment/nats
+
+5.  mkdir /etc/coredns-edge-deployment/coredns-speaker && chmod 755 mkdir /etc/coredns-edge-deployment/coredns-speaker
+
+6.  mkdir /etc/coredns-edge-deployment/coredns && chmod 755 mkdir /etc/coredns-edge-deployment/coredns
+
+7&8.  一 5,6
+
+9.  systemctl stop firewalld
+
+
+三、
+1.  mkdir /etc/coredns-edge-deployment/etcd/etcd-data && chmod 755 mkdir /etc/coredns-edge-deployment/etcd/etcd-data
+
+*2.  cp */coredns-deployment-master/roles/etcd-no-k8s/templates/etcd-systemd-template.j2 /etc/systemd/system/etcd.service	cluster集群要修改
+
+3.  cp */coredns-deployment-master/roles/etcd-no-k8s/binary/etcd /usr/bin/etcd && chmod 755 /usr/bin/etcd
+
+4.  cp */coredns-deployment-master/roles/etcd-no-k8s/binary/etcdctl /usr/bin/etcd && chmod 755 /usr/bin/etcdctl
+
+5.  cp /etc/coredns-edge-tls-dir/ca.pem  /etc/coredns-edge-deployment/etcd/etcd/etcd-ca.crt
+
+6.  cp /etc/coredns-edge-tls-dir/coredns.pem /etc/coredns-edge-deployment/etcd/server.crt
+
+7.  cp /etc/coredns-edge-tls-dir/coredns-key.pem /etc/coredns-edge-deployment/etcd/server.key
+
+8.  systemctl enable etcd && systemctl start etcd
+
+
+四、
+1.  mkdir /etc/coredns-edge-tls-dir/etcd/certs && chmod 755 /etc/coredns-edge-tls-dir/etcd/certs
+
+*2.  yum install docker
+
+3.  systemctl enable docker && systemctl start docker 
+
+4.  cp */coredns-deployment-master/roles/etcd-no-k8s/templates/env_file.j2 /etc/coredns-edge-tls-dir/coredns-speaker/env_file
+
+5.  cp /etc/coredns-edge-tls-dir/etcd-client-ca.crt /etc/coredns-edge-deployment/etcd/certs/etcd-client-ca.crt
+
+6.  cp /etc/coredns-edge-tls-dir/etcd-client.crt /etc/coredns-edge-deployment/etcd/certs/etcd-client.crt
+
+7.  cp /etc/coredns-edge-tls-dir/etcd-client.key /etc/coredns-edge-deployment/etcd/certs/etcd-client.key
+
+8.  docker rm -f coredns-speaker
+
+*9.  docker run --name coredns-speaker -d -p {{ coredns_api_port }}:80 
+  --env-file {{ project_template_path }}/coredns-speaker/env_file 
+  -v {{ project_template_path }}/etcd/certs/:{{ database_tls_dir }}
+  -v /etc/hosts:/etc/hosts 99cloud/coredns-management-api
+
+  {{ coredns_api_port }} : 80, {{ project_template_path }} : /etc/coredns-edge-deployment,
+  {{ database_tls_dir }} : /etc/coredns-edge-deployment/etcd/certs
+
+10. cp */coredns-deployment-master/roles/etcd-no-k8s/templates/coredns_api_systemd_template.j2 /etc/systemd/system/coredns-api.service
+
+11. systemctl enable coredns-api
+
+
+五、
+1.  Set var coredns message plugin mode var
+
+2.  Set var coredns message plugin mode var
+
+3.  Set nats auth mode var
+
+4.  cp */coredns-deployment-master/roles/coredns-message-no-k8s/binary/coredns /usr/bin/coredns && chmod 755 /usr/bin/coredns
+
+5.  mkdir /etc/coredns-edge-deployment/coredns/ && chmod 755 /etc/coredns-edge-deployment/coredns/
+
+6.  cp */coredns-deployment-master/roles/coredns-message-no-k8s/templates/Corefile.j2 /etc/coredns-edge-deployment/coredns/Corefile
+
+7.  cp */coredns-deployment-master/roles/coredns-message-no-k8s/templates/config.yaml.j2 /etc/coredns-edge-deployment/coredns/config.yaml
+
+8.  cp */coredns-deployment-master/roles/coredns-message-no-k8s/templates/coredns_systemd_template.j2 /etc/systemd/system/coredns.service
+
+9.  systemctl enable coredns && systemctl start coredns
+

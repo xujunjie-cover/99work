@@ -1,0 +1,94 @@
+拷贝安装包
+tar zxvf AVIV.tar.gz -C /opt
+cp kolla-registry.tar /opt/AVIV/
+
+cp kolla-ansible-*.tar.gz /opt/AVIV/repo/pip/
+/opt/AVIV/setup  
+
+
+1)	修改hosts文件内容，填入所有节点的ip和主机名对应关系，修改/opt/aviv-deploy/playbooks/aviv/inventory文件
+[master]
+节点主机名
+[deploy]
+所有节点主机名
+
+2)	修改/opt/aviv-deploy/playbooks/aviv/globals.yml文件，根据实际情况修改如下几项：
+enable_cobbler: "no"
+network_interface: "eth0"
+docker_storage_driver: ""
+
+3)	安装docker
+source /opt/kolla-ansible/bin/activate
+ansible-playbook -i /opt/aviv-deploy/playbooks/aviv/inventory -e @/opt/aviv-deploy/playbooks/aviv/globals.yml /opt/aviv-deploy/playbooks/aviv/bootstrap.yml
+
+1、编写all-in-one文件
+cp /opt/kolla-ansible/share/kolla-ansible/ansible/inventory/all-in-one /root/
+编辑如下几项中的内容：
+[control]
+AVIV与TEL所有节点
+
+2、修改globals文件, 如果虚拟机网卡不是eth0则加入api_interface: "ens33"等配置
+根据实际情况编辑文件/etc/kolla/globals.yml，例如：
+kolla_install_type: "source"
+openstack_release: "rocky"
+aviv_api_tag: "11.11.710"
+aviv_engine_tag: "11.11.710"
+aviv_dashboard_tag: "11.11.710"
+enable_kolla_zabbix: "no"
+zabbix_server_tag: "1.0.0" 
+enable_tel: "no"
+kolla_internal_vip_address: "1.2.3.99"
+kolla_internal_vip_6_address: "fe80:0:0:0:0:0:a0a:aaa"
+docker_registry: "1.2.3.20:4000"
+docker_namespace: "kolla"
+keepalived_virtual_router_id: "111"
+enable_nfs: "no"
+glance_enable_rolling_upgrade: "no"
+ironic_dnsmasq_dhcp_range:
+tempest_image_id:
+tempest_flavor_ref_id:
+tempest_public_network_id:
+tempest_floating_network_name:
+ansible_python_interpreter: /opt/kolla-ansible/bin/python
+
+
+3、安装
+source /opt/kolla-ansible/bin/activate
+kolla-ansible -i ~/all-in-one prechecks
+kolla-ansible certificates
+kolla-ansible -i ~/all-in-one pull
+
+
+*可能没有aviv docker*
+copy docker文件
+docker load --input api_ture_api
+docker tag bbb6ea0e350e   1.2.3.20:4000/kolla/centos-source-aviv-api:11.11.710
+docker tag bbb6ea0e350e   1.2.3.20:4000/kolla/centos-source-aviv-engine:11.11.710
+docker load --input dashboard_docker
+docker tag 3fc86fe99487    1.2.3.20:4000/kolla/centos-source-aviv-dashboard:11.11.710
+
+虚拟ip分配  ip address add  1.2.3.99/24 dev eth0
+检查/etc/hosts
+
+kolla-ansible -i ~/all-in-one deploy
+kolla-ansible -i ~/all-in-one post-deploy
+
+
+REPOSITORY                                          TAG                 IMAGE ID            CREATED             SIZE
+1.2.3.20:4000/kolla/centos-source-aviv-dashboard    11.11.710           3fc86fe99487        5 weeks ago         2.09GB
+1.2.3.20:4000/kolla/centos-source-aviv-engine       11.11.710           bbb6ea0e350e        5 weeks ago         1.38GB
+1.2.3.20:4000/kolla/centos-source-aviv-api          11.11.710           bbb6ea0e350e        5 weeks ago         1.38GB
+1.2.3.20:4000/kolla/centos-source-keystone-ssh      rocky               faf791d2adcf        10 months ago       1.15GB
+1.2.3.20:4000/kolla/centos-source-keystone          rocky               5907a6c3095e        10 months ago       1.13GB
+1.2.3.20:4000/kolla/centos-source-keystone-fernet   rocky               d6064166a347        10 months ago       1.13GB
+1.2.3.20:4000/kolla/centos-source-keepalived        rocky               3284558e3351        10 months ago       444MB
+1.2.3.20:4000/kolla/centos-source-haproxy           rocky               a06ae3994d10        10 months ago       463MB
+1.2.3.20:4000/kolla/centos-source-kolla-toolbox     rocky               315ffb75b4e9        10 months ago       857MB
+1.2.3.20:4000/kolla/centos-source-mariadb           rocky               e11dcd07f65a        10 months ago       627MB
+1.2.3.20:4000/kolla/centos-source-rabbitmq          rocky               bcbdd52c12c2        10 months ago       499MB
+1.2.3.20:4000/kolla/centos-source-fluentd           rocky               39fb584f800f        10 months ago       455MB
+1.2.3.20:4000/kolla/centos-source-cron              rocky               cbe86c30c33a        10 months ago       439MB
+registry                                            2                   b2b03e9146e1        17 months ago       33.3MB
+
+最后端口7002
+

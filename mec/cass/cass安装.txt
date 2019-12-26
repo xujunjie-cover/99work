@@ -1,0 +1,49 @@
+0. 密钥
+ssh-keygen
+ssh-copy-id -i ~/.ssh/id_rsa.pub root@bastion-vm
+
+1. 准备安装包
+mkdir /bastion-data
+mkfs.xfs /dev/sdb
+mount /dev/sdb /bastion-data
+vi /etc/fstab
+/dev/sdb /bastion-data xfs defaults 0 0
+
+tar -zxvf AnimbusCaasPackage.tar.gz -C /bastion-data/
+
+2. 准备安装环境
+sh /bastion-data/workspace/setup.sh
+
+3. 初始化
+cd /bastion-data/workspace/playbooks/
+vi inventory.ini
+ansible-playbook -i inventory.ini site.yaml
+
+* ./files = /bastion-data/workspace/playbooks/files
+# 分解
+yum install nginx
+setenforce 0
+cp ./files/nginx.conf.j2 /etc/nginx/nginx.conf && chmod 755 /etc/nginx/nginx.conf && systemctl restart nginx
+yum install docker httpd java httpd-tools java-1.8.0-openjdk-headless
+mkdir /bastion-data/docker && chmod 755 /bastion-data/docker
+cp ./files/bastion_daemon.json.j2 /etc/docker/daemon.json && chmod 755 /etc/docker/daemon.json
+systemctl restart docker nginx
+mv -f /etc/yum.repos.d/* /etc/yum.repos.d.bak/
+cp ./files/local.repo.j2 /etc/yum.repos.d/local.repo && chmod 755 /etc/yum.repos.d/local.repo
+cp ./files/pip.conf.j2 /etc/pip.conf
+yum install docker
+pip install passlib
+net.ipv4.ip_forward = 1
+docker load /bastion-data/workspace/docker-images/registry.tar tag docker.io/registry:2
+docker start registry
+mkdir /bastion-data/registry && chmod 777 /bastion-data/registry
+
+yum makecache
+yum install python-pip
+pip install -U pip
+systemctl restart docker 
+chmod 755 /etc/docker
+cp ./files/daemon.json.j2 /etc/docker/daemon.json
+docker restart
+
+
