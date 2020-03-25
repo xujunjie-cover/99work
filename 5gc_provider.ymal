@@ -1,0 +1,54 @@
+---
+openapi: 3.0.2
+info:
+  title: Door control
+  version: 1.0.0
+  description: An API to open and close a door
+  contact:
+    name: ETSI CTI
+    url: https://www.etsi.org
+    email: cti_support@etsi.org
+paths:
+  /door:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DoorStatus'
+          description: The door status
+      operationId: query-door-status
+      summary: Query the status of the door
+      description: Responds with the current status of the door
+    put:
+      requestBody:
+        description: The new door status
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DoorStatus'
+        required: true
+      responses:
+        "200":
+          description: Status changed correctly
+        "400":
+          description: The request is incorrect, i.e. the door is requested to be
+            open and locked.
+        "401":
+          description: Authentication failed.
+      summary: Change the status of the door
+components:
+  schemas:
+    DoorStatus:
+      title: Root Type for DoorStatus
+      description: Describes the status of the door
+      type: object
+      properties:
+        open:
+          type: boolean
+        locked:
+          type: boolean
+      example:
+        open: true
+        locked: false
